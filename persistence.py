@@ -139,3 +139,57 @@ y_validation = validation_df['price actual']
 
 X_test = test_df.drop(columns=['price actual'])
 y_test = test_df['price actual']
+
+
+# Persistence model forecast. Made using the reference: https://machinelearningmastery.com/time-series-forecasting-long-short-term-memory-network-python/
+# Walk-forward validation.
+history = df_final.loc['2018-05-26']['price actual'].tolist()
+predictions = []
+
+for i in range(len(y_test)):
+    # Make prediction by using the 24th lagged value in history.
+    prediction = history[-24]
+    predictions.append(prediction)
+    
+    # Add the current test value to the history for the next iteration.
+    history.append(y_test[i])
+    
+# Make the predictions to a dataframe.
+persistence_predictions = pd.DataFrame(predictions, columns=["prediction"])
+persistence_predictions.reset_index(drop=True, inplace=True)
+persistence_predictions.index=y_test.index
+persistence_predictions['actual'] = y_test
+
+# Calculate MSE and MAE.
+persistence_rmse = np.sqrt(mean_squared_error(persistence_predictions['actual'], persistence_predictions['prediction']))
+persistence_mae = mean_absolute_error(persistence_predictions['actual'], persistence_predictions['prediction'])
+print("RMSE Persistence Model:", persistence_rmse)
+print("MAE Persistence Model:", persistence_mae)
+
+# Plot the predictions versus the actuals.
+# Create a figure and axis objects.
+fig, axs = plt.subplots(3, 1, figsize=(12, 10))
+
+# Plot entire time series
+axs[0].plot(persistence_predictions.index, persistence_predictions['actual'], color='blue', label = 'actual')
+axs[0].plot(persistence_predictions.index, persistence_predictions['prediction'], color='red', label = 'predictions')
+axs[0].xaxis.set_major_formatter(mdates.DateFormatter("%b %Y"));
+axs[0].set_title('Predictions and actual values for the whole out-of-sample period, one month and one week')
+axs[0].legend()
+axs[0].grid(True)
+
+# Plot one month of data
+axs[1].plot(persistence_predictions.loc['2018-06-01':'2018-07-01'].index, persistence_predictions.loc['2018-06-01':'2018-07-01']['actual'], color='blue')
+axs[1].plot(persistence_predictions.loc['2018-06-01':'2018-07-01'].index, persistence_predictions.loc['2018-06-01':'2018-07-01']['prediction'], color ='red')
+axs[1].xaxis.set_major_formatter(mdates.DateFormatter("%b %d"));
+axs[1].grid(True)
+
+# Plot one week of data
+axs[2].plot(persistence_predictions.loc['2018-06-01':'2018-06-08'].index, persistence_predictions.loc['2018-06-01':'2018-06-08']['actual'], color='blue')
+axs[2].plot(persistence_predictions.loc['2018-06-01':'2018-06-08'].index, persistence_predictions.loc['2018-06-01':'2018-06-08']['prediction'], color='red')
+axs[2].xaxis.set_major_formatter(mdates.DateFormatter("%b %d"));
+axs[2].grid(True)
+
+# save the plot as an PNG file
+plt.savefig('Persistence.png', format='png')
+plt.show()
