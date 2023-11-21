@@ -2,8 +2,6 @@ import pandas as pd
 import numpy as np
 from datetime import timedelta
 import matplotlib.pyplot as plt
-from statsmodels.tsa.stattools import adfuller
-from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics import mean_absolute_error
 import matplotlib.dates as mdates
@@ -66,61 +64,6 @@ df_final[['temp_Madrid', 'temp_Barcelona', 'temp_Valencia', 'temp_Seville', 'tem
 df_final['hour'] = df_final.index.hour
 df_final['weekday'] = df_final.index.weekday
 df_final['month'] = df_final.index.month
-
-# Plot one month of the electricity price.
-
-# Extract x and y values from the dataframe.
-start_date = df_final.index[0]
-end_date = start_date + pd.DateOffset(months=1)
-
-x = df_final[start_date:end_date].index
-y = df_final[start_date:end_date]['price actual']
-
-# Create the plot.
-plt.figure(figsize=(10, 6))
-plt.plot(x, y, label='Spot price')
-plt.xlabel('Time')
-plt.ylabel('Actual Price (€/MWh)')
-plt.title('The spot price for one month')
-plt.grid(True)
-plt.legend()
-plt.show()
-
-# Plot one week of the electricity price.
-
-# Extract x and y values from the dataframe.
-start_date = df_final.index[0]
-end_date = start_date + pd.DateOffset(weeks=1)
-
-x = df_final[start_date:end_date].index
-y = df_final[start_date:end_date]['price actual']
-
-# Create the plot.
-plt.figure(figsize=(10, 6))
-plt.plot(x, y, label='Spot price')
-plt.xlabel('Time')
-plt.ylabel('Actual Price (€/MWh)')
-plt.title('The spot price for one week')
-plt.grid(True)
-plt.legend()
-plt.show()
-
-# ADF test to see if the data is stationary.
-adf = adfuller(df_final['price actual'])
-
-# Extract and print the results. We reject the null hypothesis under a 1% significance level and hence the time series is stationary.
-print("ADF Statistic:", adf[0])
-print("p-value:", adf[1])
-print("Critical Values:")
-for key, value in adf[4].items():
-    print(f"{key}: {value}")
-
-# Plot ACF and PACF.
-fig, (ax1, ax2) = plt.subplots(nrows=2, figsize=(10, 6))
-plot_acf(df_final['price actual'], lags=48, ax=ax1)
-plot_pacf(df_final['price actual'], lags=48, ax=ax2, method = 'ywm')
-plt.tight_layout()
-plt.show()
 
 # Split the data into training, test and validation sets. I use a hard cutoff date to ensure that each set starts and ends at whole days. The spit is around 70% for training, 15% for validation and 15% for test.
 val_cutoff = pd.to_datetime('2017-10-20', utc=True, infer_datetime_format=True)
@@ -185,4 +128,6 @@ plt.show()
 
 mse = mean_squared_error(y_test, y_pred_avg)
 rmse = np.sqrt(mse)
+mae = mean_absolute_error(y_test, y_pred_avg)
 print('Test RMSE: %.3f' % rmse)
+print('Test MAE: %.3f' % mae)
