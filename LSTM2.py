@@ -73,7 +73,7 @@ train_df = df_final.loc[df_final.index < val_cutoff]
 validation_df = df_final.loc[(df_final.index >= val_cutoff) & (df_final.index < test_cutoff)]
 test_df = df_final.loc[df_final.index >= test_cutoff]
 
-# Separate feature and target variables
+# Separate feature and target variables.
 X_train = train_df.drop(columns=['price actual'])
 y_train = train_df['price actual']
 
@@ -86,10 +86,20 @@ y_test = test_df['price actual']
 # Scale the data.
 from sklearn.preprocessing import MinMaxScaler
 
-scaler = MinMaxScaler(feature_range=(0, 1))
-X_train_scaled = scaler.fit_transform(X_train)
-X_validation_scaled = scaler.transform(X_validation)
-X_test_scaled = scaler.transform(X_test)
+# Scale the input features.
+scaler_X = MinMaxScaler(feature_range=(-1, 1))
+X_train_scaled = scaler_X.fit_transform(X_train)
+X_validation_scaled = scaler_X.transform(X_validation)
+X_test_scaled = scaler_X.transform(X_test)
+
+# Convert y_train to a NumPy array and reshape.
+y_train_array = np.array(y_train).reshape(-1, 1)
+y_validation_array = np.array(y_validation).reshape(-1, 1)
+
+# Scale the target variable.
+scaler_y = MinMaxScaler(feature_range=(-1, 1))
+y_train_scaled = scaler_y.fit_transform(y_train_array)
+y_validation_scaled = scaler_y.transform(y_validation_array)
 
 # Reshape the data to be 3-dimensional in the form [samples, timesteps, features].
 X_train_reshaped = X_train_scaled.reshape((X_train_scaled.shape[0], 1, X_train_scaled.shape[1]))
@@ -98,36 +108,27 @@ X_test_reshaped = X_test_scaled.reshape((X_test_scaled.shape[0], 1, X_test_scale
 
 # Build the LSTM model.
 from keras.models import Sequential
-from keras.layers import LSTM, Dense
+from keras.layers import LSTM, Dense, Dropout, Flatten
 
 model = Sequential()
-model.add(LSTM(50, activation='relu', input_shape=(X_train_reshaped.shape[1], X_train_reshaped.shape[2])))
-model.add(Dense(3)) 
+model.add(LSTM(100, activation='relu', input_shape=(X_train_reshaped.shape[1], X_train_reshaped.shape[2])))
+model.add(Flatten())
+model.add(Dense(200))
+model.add(Dropout(0.1))
+model.add(Dense(1))
 model.compile(optimizer='adam', loss='mse')
 
-model.fit(X_train_reshaped, y_train, epochs=50, validation_data=(X_validation_reshaped, y_validation), verbose=2)
+# Train the model with scaled target variable.
+model.fit(X_train_reshaped, y_train_scaled, epochs=50, validation_data=(X_validation_reshaped, y_validation_scaled), verbose=2)
 
 # Make predictions.
 y_pred = model.predict(X_test_reshaped)
-y_pred_avg = np.mean(y_pred, axis=1)
 
-# Select the first month of data
-y_test_first_month = y_test[:30]
-y_pred_first_month = y_pred[:30]
+# Inverse transform the predictions to the original scale.
+y_pred_original_scale = scaler_y.inverse_transform(y_pred)
 
-plt.figure(figsize=(10,6))
-plt.plot(y_test_first_month.index, y_test_first_month, label='Actual')
-plt.plot(y_test_first_month.index, y_pred_avg[:30], label='Predicted Average')
-plt.title('Actual vs Predicted for the First Month')
-plt.xlabel('Date')
-plt.ylabel('Value')
-plt.legend()
-plt.show()
-
-# Invert the predictions to the original scale.
-
-mse = mean_squared_error(y_test, y_pred_avg)
+mse = mean_squared_error(y_test, y_pred_original_scale)
 rmse = np.sqrt(mse)
-mae = mean_absolute_error(y_test, y_pred_avg)
+mae = mean_absolute_error(y_test, y_pred_original_scale)
 print('Test RMSE: %.3f' % rmse)
 print('Test MAE: %.3f' % mae)
