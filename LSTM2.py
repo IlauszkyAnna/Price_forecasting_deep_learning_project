@@ -5,6 +5,9 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics import mean_absolute_error
 import matplotlib.dates as mdates
+from sklearn.preprocessing import MinMaxScaler
+from keras.models import Sequential
+from keras.layers import LSTM, Dense, Dropout, Flatten
 
 # I want to reference the kaggle notebook for the preproccessing of the data given in: https://www.kaggle.com/code/dimitriosroussis/electricity-price-forecasting-with-dnns-eda/notebook
 
@@ -73,18 +76,15 @@ train_df = df_final.loc[df_final.index < val_cutoff]
 validation_df = df_final.loc[(df_final.index >= val_cutoff) & (df_final.index < test_cutoff)]
 test_df = df_final.loc[df_final.index >= test_cutoff]
 
-# Separate feature and target variables.
-X_train = train_df.drop(columns=['price actual'])
-y_train = train_df['price actual']
+# Separate feature and target variables. Make target variables into np.array for minmaxscaler.
+X_train = np.array(train_df.drop(columns=['price actual']))
+y_train = np.array(train_df['price actual']).reshape(-1,1)
 
-X_validation = validation_df.drop(columns=['price actual'])
-y_validation = validation_df['price actual']
+X_validation = np.array(validation_df.drop(columns=['price actual']))
+y_validation = np.array(validation_df['price actual']).reshape(-1,1)
 
-X_test = test_df.drop(columns=['price actual'])
-y_test = test_df['price actual']
-
-# Scale the data.
-from sklearn.preprocessing import MinMaxScaler
+X_test = np.array(test_df.drop(columns=['price actual']))
+y_test = np.array(test_df['price actual']).reshape(-1,1)
 
 # Scale the input features.
 scaler_X = MinMaxScaler(feature_range=(-1, 1))
@@ -92,40 +92,37 @@ X_train_scaled = scaler_X.fit_transform(X_train)
 X_validation_scaled = scaler_X.transform(X_validation)
 X_test_scaled = scaler_X.transform(X_test)
 
-# Convert y_train to a NumPy array and reshape.
-y_train_array = np.array(y_train).reshape(-1, 1)
-y_validation_array = np.array(y_validation).reshape(-1, 1)
-
 # Scale the target variable.
 scaler_y = MinMaxScaler(feature_range=(-1, 1))
-y_train_scaled = scaler_y.fit_transform(y_train_array)
-y_validation_scaled = scaler_y.transform(y_validation_array)
+y_train_scaled = scaler_y.fit_transform(y_train)
+y_validation_scaled = scaler_y.transform(y_validation)
 
 # Reshape the data to be 3-dimensional in the form [samples, timesteps, features].
-X_train_reshaped = X_train_scaled.reshape((X_train_scaled.shape[0], 1, X_train_scaled.shape[1]))
-X_validation_reshaped = X_validation_scaled.reshape((X_validation_scaled.shape[0], 1, X_validation_scaled.shape[1]))
-X_test_reshaped = X_test_scaled.reshape((X_test_scaled.shape[0], 1, X_test_scaled.shape[1]))
+X_train_reshaped = X_train_scaled.reshape((-1, 24, X_train_scaled.shape[1]))
+X_validation_reshaped = X_validation_scaled.reshape((-1, 24, X_validation_scaled.shape[1]))
+X_test_reshaped = X_test_scaled.reshape((-1, 24, X_test_scaled.shape[1]))
+
+# Reshape target variables to desired shape. We want to predict 24 steps at a time.
+y_train_reshaped = y_train_scaled.reshape(-1, 24, 1)
+y_validation_reshaped = y_validation_scaled.reshape(-1, 24, 1)
 
 # Build the LSTM model.
-from keras.models import Sequential
-from keras.layers import LSTM, Dense, Dropout, Flatten
-
 model = Sequential()
-model.add(LSTM(100, activation='relu', input_shape=(X_train_reshaped.shape[1], X_train_reshaped.shape[2])))
+model.add(LSTM(100, activation='relu', input_shape=(X_train_reshaped.shape[1], X_train_reshaped.shape[2]), return_sequences=False))
 model.add(Flatten())
 model.add(Dense(200))
 model.add(Dropout(0.1))
-model.add(Dense(1))
+model.add(Dense(24))
 model.compile(optimizer='adam', loss='mse')
 
 # Train the model with scaled target variable.
-model.fit(X_train_reshaped, y_train_scaled, epochs=50, validation_data=(X_validation_reshaped, y_validation_scaled), verbose=2)
+model.fit(X_train_reshaped, y_train_reshaped, epochs=50, validation_data=(X_validation_reshaped, y_validation_reshaped), verbose=2)
 
 # Make predictions.
-y_pred = model.predict(X_test_reshaped)
+y_pred = model.predict(X_test_reshaped).flatten()
 
 # Inverse transform the predictions to the original scale.
-y_pred_original_scale = scaler_y.inverse_transform(y_pred)
+y_pred_original_scale = scaler_y.inverse_transform(y_pred.reshape(-1, 1))
 
 mse = mean_squared_error(y_test, y_pred_original_scale)
 rmse = np.sqrt(mse)
