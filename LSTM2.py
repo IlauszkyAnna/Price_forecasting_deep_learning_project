@@ -117,7 +117,7 @@ model.add(Dense(24))
 model.compile(optimizer='adam', loss='mse')
 
 # Define early stopping criteria
-early_stopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
+early_stopping = EarlyStopping(monitor='val_loss', patience=10, verbose=1)
 
 # Train the model with scaled target variable.
 model.fit(X_train_reshaped, y_train_reshaped, epochs=50, validation_data=(X_validation_reshaped, y_validation_reshaped), callbacks=[early_stopping], verbose=2)
