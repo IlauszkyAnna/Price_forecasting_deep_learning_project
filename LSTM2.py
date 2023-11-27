@@ -8,6 +8,7 @@ import matplotlib.dates as mdates
 from sklearn.preprocessing import MinMaxScaler
 from keras.models import Sequential
 from keras.layers import LSTM, Dense, Dropout, Flatten
+from keras.callbacks import EarlyStopping
 
 # I want to reference the kaggle notebook for the preproccessing of the data given in: https://www.kaggle.com/code/dimitriosroussis/electricity-price-forecasting-with-dnns-eda/notebook
 
@@ -115,8 +116,11 @@ model.add(Dropout(0.1))
 model.add(Dense(24))
 model.compile(optimizer='adam', loss='mse')
 
+# Define early stopping criteria
+early_stopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
+
 # Train the model with scaled target variable.
-model.fit(X_train_reshaped, y_train_reshaped, epochs=50, validation_data=(X_validation_reshaped, y_validation_reshaped), verbose=2)
+model.fit(X_train_reshaped, y_train_reshaped, epochs=50, validation_data=(X_validation_reshaped, y_validation_reshaped), callbacks=[early_stopping], verbose=2)
 
 # Make predictions.
 y_pred = model.predict(X_test_reshaped).flatten()
