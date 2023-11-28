@@ -9,6 +9,7 @@ from sklearn.preprocessing import MinMaxScaler
 from keras.models import Sequential
 from keras.layers import LSTM, Dense, Dropout, Flatten
 from keras.callbacks import EarlyStopping
+from hyperopt import fmin, tpe, hp
 
 # I want to reference the kaggle notebook for the preproccessing of the data given in: https://www.kaggle.com/code/dimitriosroussis/electricity-price-forecasting-with-dnns-eda/notebook
 
@@ -107,29 +108,73 @@ X_test_reshaped = X_test_scaled.reshape((-1, 24, X_test_scaled.shape[1]))
 y_train_reshaped = y_train_scaled.reshape(-1, 24, 1)
 y_validation_reshaped = y_validation_scaled.reshape(-1, 24, 1)
 
-# Build the LSTM model.
-model = Sequential()
-model.add(LSTM(100, activation='relu', input_shape=(X_train_reshaped.shape[1], X_train_reshaped.shape[2]), return_sequences=False))
-model.add(Flatten())
-model.add(Dense(200))
-model.add(Dropout(0.1))
-model.add(Dense(24))
-model.compile(optimizer='adam', loss='mse')
+# Use Tree Parzen Estimator to tune the hyperparameters for the model. Reference: https://towardsdatascience.com/algorithms-for-hyperparameter-optimisation-in-python-edda4bdb167 for the implementation of the TPE.
+# Define the hyperparameter search space.
+space = {
+    'lstm_units': hp.choice('lstm_units', [128, 256, 512]),
+    'dense_units': hp.choice('dense_units', [64, 128, 256]),
+    'dropout_rate': hp.uniform('dropout_rate', 0.0, 0.5),
+    'epochs': hp.choice('epochs', [50, 100, 150]),
+    'batch_size': hp.choice('batch_size', [32, 64, 128])
+}
 
-# Define early stopping criteria
+# Define the objective function to minimize.
+def objective(params):
+    model = Sequential()
+    model.add(LSTM(params['lstm_units'], activation='relu', input_shape=(X_train_reshaped.shape[1], X_train_reshaped.shape[2]), return_sequences=False))
+    model.add(Flatten())
+    model.add(Dense(params['dense_units']))
+    model.add(Dropout(params['dropout_rate']))
+    model.add(Dense(24))
+    model.compile(optimizer='adam', loss='mse')
+
+    early_stopping = EarlyStopping(monitor='val_loss', patience=10, verbose=1)
+
+    model.fit(X_train_reshaped, y_train_reshaped, epochs=params['epochs'], batch_size=params['batch_size'],
+              validation_data=(X_validation_reshaped, y_validation_reshaped), callbacks=[early_stopping], verbose=0)
+
+    y_pred = model.predict(X_validation_reshaped).flatten()
+    
+    y_pred_original_scale = scaler_y.inverse_transform(y_pred.reshape(-1, 1))
+
+    mse = mean_squared_error(y_validation, y_pred_original_scale)
+    return mse
+
+# Use the fmin function to find the best hyperparameters.
+best = fmin(fn=objective, space=space, algo=tpe.suggest, max_evals=50)
+
+# Print the best hyperparameters.
+print("Best Hyperparameters:", best)
+
+# Use the best hyperparameters to train the final model.
+best_lstm_units = [128, 256, 512][best['lstm_units']]
+best_dense_units = [64, 128, 256][best['dense_units']]
+best_epochs = [50, 100, 150][best['epochs']]
+best_batch_size = [32, 64, 128][best['batch_size']]
+best_dropout_rate = best['dropout_rate']
+
+final_model = Sequential()
+final_model.add(LSTM(best_lstm_units, activation='relu', input_shape=(X_train_reshaped.shape[1], X_train_reshaped.shape[2]), return_sequences=False))
+final_model.add(Flatten())
+final_model.add(Dense(best_dense_units))
+final_model.add(Dropout(best_dropout_rate))
+final_model.add(Dense(24))
+final_model.compile(optimizer='adam', loss='mse')
+
 early_stopping = EarlyStopping(monitor='val_loss', patience=10, verbose=1)
 
-# Train the model with scaled target variable.
-model.fit(X_train_reshaped, y_train_reshaped, epochs=50, validation_data=(X_validation_reshaped, y_validation_reshaped), callbacks=[early_stopping], verbose=2)
+final_model.fit(X_train_reshaped, y_train_reshaped, epochs=best_epochs, batch_size=best_batch_size,
+                validation_data=(X_validation_reshaped, y_validation_reshaped), callbacks=[early_stopping], verbose=2)
 
-# Make predictions.
-y_pred = model.predict(X_test_reshaped).flatten()
+# Make final predictions.
+y_pred_final = final_model.predict(X_test_reshaped).flatten()
 
 # Inverse transform the predictions to the original scale.
-y_pred_original_scale = scaler_y.inverse_transform(y_pred.reshape(-1, 1))
+y_pred_final_original_scale = scaler_y.inverse_transform(y_pred_final.reshape(-1, 1))
 
-mse = mean_squared_error(y_test, y_pred_original_scale)
-rmse = np.sqrt(mse)
-mae = mean_absolute_error(y_test, y_pred_original_scale)
-print('Test RMSE: %.3f' % rmse)
-print('Test MAE: %.3f' % mae)
+# Evaluate the final model.
+mse_final = mean_squared_error(y_test, y_pred_final_original_scale)
+rmse_final = np.sqrt(mse_final)
+mae_final = mean_absolute_error(y_test, y_pred_final_original_scale)
+print('Final Test RMSE: %.3f' % rmse_final)
+print('Final Test MAE: %.3f' % mae_final)
