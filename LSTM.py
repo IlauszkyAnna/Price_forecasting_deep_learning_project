@@ -8,7 +8,7 @@ import matplotlib.dates as mdates
 from sklearn.preprocessing import MinMaxScaler
 from keras.models import Sequential
 from keras.layers import LSTM, Dense, Dropout, Flatten
-from keras.callbacks import EarlyStopping
+from keras.callbacks import EarlyStopping, ModelCheckpoint
 from hyperopt import fmin, tpe, hp
 
 # I want to reference the kaggle notebook for the preproccessing of the data given in: https://www.kaggle.com/code/dimitriosroussis/electricity-price-forecasting-with-dnns-eda/notebook
@@ -98,15 +98,22 @@ X_test_scaled = scaler_X.transform(X_test)
 scaler_y = MinMaxScaler(feature_range=(-1, 1))
 y_train_scaled = scaler_y.fit_transform(y_train)
 y_validation_scaled = scaler_y.transform(y_validation)
+y_test_scaled = scaler_y.transform(y_test)
+
+# Create a helper function for the reshaping of the x and y variables. We want to predict the next day's electricity price based on the data of the last 7 days. So we have to create sequences of the desired length.
+def create_sequences(data, target, seq_length, step = 24):
+    X_sequences, y_sequences = [], []
+    for i in range(0, len(data) - seq_length, step):
+        X_seq = data[i:i+seq_length]
+        y_seq = target[i + seq_length:i+(seq_length // 7) + seq_length]
+        X_sequences.append(X_seq)
+        y_sequences.append(y_seq)
+    return np.array(X_sequences), np.array(y_sequences)
 
 # Reshape the data to be 3-dimensional in the form [samples, timesteps, features].
-X_train_reshaped = X_train_scaled.reshape((-1, 24, X_train_scaled.shape[1]))
-X_validation_reshaped = X_validation_scaled.reshape((-1, 24, X_validation_scaled.shape[1]))
-X_test_reshaped = X_test_scaled.reshape((-1, 24, X_test_scaled.shape[1]))
-
-# Reshape target variables to desired shape. We want to predict 24 steps at a time.
-y_train_reshaped = y_train_scaled.reshape(-1, 24, 1)
-y_validation_reshaped = y_validation_scaled.reshape(-1, 24, 1)
+X_train_reshaped, y_train_reshaped = create_sequences(X_train_scaled, y_train_scaled, 168)
+X_validation_reshaped, y_validation_reshaped = create_sequences(X_validation_scaled, y_validation_scaled, 168)
+X_test_reshaped, y_test_reshaped = create_sequences(X_test_scaled, y_test_scaled, 168)
 
 # Use Tree Parzen Estimator to tune the hyperparameters for the model. Reference: https://towardsdatascience.com/algorithms-for-hyperparameter-optimisation-in-python-edda4bdb167 for the implementation of the TPE.
 # Define the hyperparameter search space.
@@ -129,15 +136,19 @@ def objective(params):
     model.compile(optimizer='adam', loss='mse')
 
     early_stopping = EarlyStopping(monitor='val_loss', patience=10, verbose=1)
+    
+    checkpoint = ModelCheckpoint('best_model_weights.h5', monitor='val_loss', save_best_only=True, mode='min', verbose=1)
 
     model.fit(X_train_reshaped, y_train_reshaped, epochs=params['epochs'], batch_size=params['batch_size'],
-              validation_data=(X_validation_reshaped, y_validation_reshaped), callbacks=[early_stopping], verbose=0)
-
+              validation_data=(X_validation_reshaped, y_validation_reshaped), callbacks=[early_stopping, checkpoint], verbose=0)
+    
+    model.load_weights('best_model_weights.h5')
+    
     y_pred = model.predict(X_validation_reshaped).flatten()
     
     y_pred_original_scale = scaler_y.inverse_transform(y_pred.reshape(-1, 1))
 
-    mse = mean_squared_error(y_validation, y_pred_original_scale)
+    mse = mean_squared_error(y_validation[168:], y_pred_original_scale)
     return mse
 
 # Use the fmin function to find the best hyperparameters.
@@ -161,10 +172,17 @@ final_model.add(Dropout(best_dropout_rate))
 final_model.add(Dense(24))
 final_model.compile(optimizer='adam', loss='mse')
 
+# Define early stopping and model checkpoint criteria.
 early_stopping = EarlyStopping(monitor='val_loss', patience=10, verbose=1)
 
+final_checkpoint = ModelCheckpoint('final_model_weights.h5', monitor='val_loss', save_best_only=True, mode='min', verbose=1)
+
+# Fit the model.
 final_model.fit(X_train_reshaped, y_train_reshaped, epochs=best_epochs, batch_size=best_batch_size,
-                validation_data=(X_validation_reshaped, y_validation_reshaped), callbacks=[early_stopping], verbose=2)
+                validation_data=(X_validation_reshaped, y_validation_reshaped), callbacks=[early_stopping, final_checkpoint], verbose=2)
+
+# Load the best weights from the ModelCheckpoint criteria.
+final_model.load_weights('final_model_weights.h5')
 
 # Make final predictions.
 y_pred_final = final_model.predict(X_test_reshaped).flatten()
@@ -173,8 +191,8 @@ y_pred_final = final_model.predict(X_test_reshaped).flatten()
 y_pred_final_original_scale = scaler_y.inverse_transform(y_pred_final.reshape(-1, 1))
 
 # Evaluate the final model.
-mse_final = mean_squared_error(y_test, y_pred_final_original_scale)
+mse_final = mean_squared_error(y_test[168:], y_pred_final_original_scale)
 rmse_final = np.sqrt(mse_final)
-mae_final = mean_absolute_error(y_test, y_pred_final_original_scale)
+mae_final = mean_absolute_error(y_test[168:], y_pred_final_original_scale)
 print('Final Test RMSE: %.3f' % rmse_final)
 print('Final Test MAE: %.3f' % mae_final)
