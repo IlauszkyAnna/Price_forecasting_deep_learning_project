@@ -67,42 +67,46 @@ df_final['hour'] = df_final.index.hour
 df_final['weekday'] = df_final.index.weekday
 df_final['month'] = df_final.index.month
 
-# Plot one month of the electricity price.
+# Plot the time series.
+fig, axs = plt.subplots(3, 1, figsize=(12, 10))
 
-# Extract x and y values from the dataframe.
-start_date = df_final.index[0]
-end_date = start_date + pd.DateOffset(months=1)
+# Plot for the entire time series.
+x_all = df_final.index
+y_all = df_final['price actual']
+axs[0].plot(x_all, y_all, label='Spot price')
+axs[0].set_xlabel('Time')
+axs[0].set_ylabel('Actual Price (€/MWh)')
+axs[0].set_title('Time series of the electricity price for the whole period, one month and one week')
+axs[0].xaxis.set_major_formatter(mdates.DateFormatter("%b %Y"));
+axs[0].grid(True)
+axs[0].legend()
 
-x = df_final[start_date:end_date].index
-y = df_final[start_date:end_date]['price actual']
+# Plot for one month.
+start_date_month = df_final.index[0]
+end_date_month = start_date_month + pd.DateOffset(months=1)
+x_month = df_final[start_date_month:end_date_month].index
+y_month = df_final[start_date_month:end_date_month]['price actual']
+axs[1].plot(x_month, y_month, label='Spot price')
+axs[1].set_xlabel('Time')
+axs[1].set_ylabel('Actual Price (€/MWh)')
+axs[1].xaxis.set_major_formatter(mdates.DateFormatter("%b %d %Y"));
+axs[1].grid(True)
+axs[1].legend()
 
-# Create the plot.
-plt.figure(figsize=(10, 6))
-plt.plot(x, y, label='Spot price')
-plt.xlabel('Time')
-plt.ylabel('Actual Price (€/MWh)')
-plt.title('The spot price for one month')
-plt.grid(True)
-plt.legend()
-plt.show()
+# Plot for one week.
+start_date_week = df_final.index[0]
+end_date_week = start_date_week + pd.DateOffset(weeks=1)
+x_week = df_final[start_date_week:end_date_week].index
+y_week = df_final[start_date_week:end_date_week]['price actual']
+axs[2].plot(x_week, y_week, label='Spot price')
+axs[2].set_xlabel('Time')
+axs[2].set_ylabel('Actual Price (€/MWh)')
+axs[2].xaxis.set_major_formatter(mdates.DateFormatter("%b %d"));
+axs[2].grid(True)
+axs[2].legend()
 
-# Plot one week of the electricity price.
-
-# Extract x and y values from the dataframe.
-start_date = df_final.index[0]
-end_date = start_date + pd.DateOffset(weeks=1)
-
-x = df_final[start_date:end_date].index
-y = df_final[start_date:end_date]['price actual']
-
-# Create the plot.
-plt.figure(figsize=(10, 6))
-plt.plot(x, y, label='Spot price')
-plt.xlabel('Time')
-plt.ylabel('Actual Price (€/MWh)')
-plt.title('The spot price for one week')
-plt.grid(True)
-plt.legend()
+# Show the combined plot.
+plt.savefig('Price.png', format='png')
 plt.show()
 
 # ADF test to see if the data is stationary.
