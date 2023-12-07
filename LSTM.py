@@ -11,8 +11,9 @@ from keras.layers import LSTM, Dense, Dropout, Flatten
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 from hyperopt import fmin, tpe, hp
 import random
+from matplotlib.ticker import MaxNLocator
 
-# Set the seed
+# Set the seed.
 random.seed(123)
 
 # I want to reference the kaggle notebook for the preproccessing of the data given in: https://www.kaggle.com/code/dimitriosroussis/electricity-price-forecasting-with-dnns-eda/notebook
@@ -119,7 +120,7 @@ X_train_reshaped, y_train_reshaped = create_sequences(X_train_scaled, y_train_sc
 X_validation_reshaped, y_validation_reshaped = create_sequences(X_validation_scaled, y_validation_scaled, 24)
 X_test_reshaped, y_test_reshaped = create_sequences(X_test_scaled, y_test_scaled, 24)
 
-# Use Tree Parzen Estimator to tune the hyperparameters for the model. Reference: https://towardsdatascience.com/algorithms-for-hyperparameter-optimisation-in-python-edda4bdb167 for the implementation of the TPE.
+# Use Tree-structured Parzen Estimator to tune the hyperparameters for the model. Reference: https://towardsdatascience.com/algorithms-for-hyperparameter-optimisation-in-python-edda4bdb167 for the implementation of the TPE.
 # Define the hyperparameter search space.
 space = {
     'lstm_units': hp.choice('lstm_units', [128, 256, 512]),
@@ -182,7 +183,7 @@ early_stopping = EarlyStopping(monitor='val_loss', patience=10, verbose=1)
 final_checkpoint = ModelCheckpoint('final_model_weights1.h5', monitor='val_loss', save_best_only=True, mode='min', verbose=1)
 
 # Fit the model.
-final_model.fit(X_train_reshaped, y_train_reshaped, epochs=best_epochs, batch_size=best_batch_size,
+loss_history = final_model.fit(X_train_reshaped, y_train_reshaped, epochs=best_epochs, batch_size=best_batch_size,
                 validation_data=(X_validation_reshaped, y_validation_reshaped), callbacks=[early_stopping, final_checkpoint], verbose=2)
 
 # Load the best weights from the ModelCheckpoint criteria.
@@ -199,4 +200,49 @@ mse_final = mean_squared_error(y_test, y_pred_final_original_scale)
 rmse_final = np.sqrt(mse_final)
 mae_final = mean_absolute_error(y_test, y_pred_final_original_scale)
 print('Final Test RMSE: %.3f' % rmse_final)
-print('Final Test MAE: %.3f' % mae_final)le)
+print('Final Test MAE: %.3f' % mae_final)
+
+test_predictions = pd.DataFrame({'actual': y_test.flatten(), 'prediction': y_pred_final_original_scale.flatten()}, index=test_df.index)
+
+# Plot the predictions versus the actuals.
+# Create a figure and axis objects.
+fig, axs = plt.subplots(3, 1, figsize=(12, 10))
+
+# Plot entire time series.
+axs[0].plot(test_predictions.index, test_predictions['actual'], color='blue', label='actual')
+axs[0].plot(test_predictions.index, test_predictions['prediction'], color='red', label='predictions')
+axs[0].xaxis.set_major_formatter(mdates.DateFormatter("%b %Y"))
+axs[0].set_title('Predictions and actual values for the whole out-of-sample period, one month and one week')
+axs[0].legend()
+axs[0].grid(True)
+
+# Plot one month of data for validation set.
+axs[1].plot(test_predictions.loc['2018-06-01':'2018-07-01'].index, test_predictions.loc['2018-06-01':'2018-07-01']['actual'], color='blue')
+axs[1].plot(test_predictions.loc['2018-06-01':'2018-07-01'].index, test_predictions.loc['2018-06-01':'2018-07-01']['prediction'], color='red')
+axs[1].xaxis.set_major_formatter(mdates.DateFormatter("%b %d"))
+axs[1].grid(True)
+
+# Plot one week of data for validation set.
+axs[2].plot(test_predictions.loc['2018-06-01':'2018-06-08'].index, test_predictions.loc['2018-06-01':'2018-06-08']['actual'], color='blue')
+axs[2].plot(test_predictions.loc['2018-06-01':'2018-06-08'].index, test_predictions.loc['2018-06-01':'2018-06-08']['prediction'], color='red')
+axs[2].xaxis.set_major_formatter(mdates.DateFormatter("%b %d"))
+axs[2].grid(True)
+
+# Save the plot as a PNG file.
+plt.savefig('LSTM_Predictions.png', format='png')
+plt.show()
+
+# Make a loss graph.
+# Plot training loss
+plt.plot(loss_history.history['loss'], label='Training Loss')
+# Plot validation loss
+plt.plot(loss_history.history['val_loss'], label='Validation Loss')
+
+plt.title('Loss graph during training of the LSTM model')
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+# Set x-axis ticks to whole numbers
+plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
+plt.legend()
+plt.savefig('loss_graph.png', format='png')
+plt.show()
